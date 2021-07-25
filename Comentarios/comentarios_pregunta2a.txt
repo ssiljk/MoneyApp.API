@@ -1,0 +1,9 @@
+¿Qué opina de pasar el id de usuario como input del endpoint? ¿Cómo mejoraría la
+transacción para asegurarnos de que el usuario que pidió la compra es quien dice ser?
+
+El usuario debe ser autenticado con su password al momento de hacer login
+luego el backend deberia generar un token expirable, que va a servir para que el usuario pueda enviarlo
+durante las subsecuentes transacciones con la API hasta que haga logout o expire el token.
+
+
+

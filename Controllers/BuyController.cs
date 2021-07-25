@@ -10,6 +10,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace MoneyApp.API.Controllers
 {
@@ -17,20 +18,28 @@ namespace MoneyApp.API.Controllers
     [ApiController]
     public class BuyController : ControllerBase
     {
+        private readonly DataContext _context;
         private readonly ILogger<BuyController> _logger;
+        private readonly IConfiguration _configuration;
 
-        public BuyController(ILogger<BuyController> logger)
+        public BuyController(DataContext context,
+                             ILogger<BuyController> logger,
+                             IConfiguration configuration)
         {
+            _context = context;
             _logger = logger;
+            _configuration = configuration;
         }
         [HttpPost]
 
         public async Task<IActionResult> Post([FromBody] BuyInfo buyInfo)
         {
             Dictionary<string, string> currencyUrl = new Dictionary<string, string>();
-            currencyUrl.Add("dolar", "https://www.bancoprovincia.com.ar/Principal/Dolar");
-            currencyUrl.Add("real", "");
-            //currencyUrl.Add("dolarcan", "url for dolarcan");
+            var valuesSection = _configuration.GetSection("MoneySettings:MoneyValues");
+            foreach (IConfigurationSection section in valuesSection.GetChildren())
+            {
+                currencyUrl.Add(section.GetValue<string>("currency"), section.GetValue<string>("currencyUrl"));
+            }
 
             if (!currencyUrl.ContainsKey(buyInfo.CurrencyName))
             {
@@ -44,16 +53,24 @@ namespace MoneyApp.API.Controllers
                 return BadRequest("Quantity to invest must be a positive number");
             }
 
-                 // if (currencyName == "dolarcan" && currencyUrl["dolarcan"] == string.Empty)
-                //     return BadRequest("Currency dolarcan not implemented yet");
 
             string[] quote;
             string quoteUrl;
 
-            if (currencyUrl[buyInfo.CurrencyName] == string.Empty)
+            if ((currencyUrl[buyInfo.CurrencyName] == string.Empty) && (buyInfo.CurrencyName == "real"))
+            {
                 quoteUrl = currencyUrl["dolar"];
+            }
             else
+            {
                 quoteUrl = currencyUrl[buyInfo.CurrencyName];
+            }
+
+            if(quoteUrl == string.Empty)
+            {
+                _logger.LogError("Error URL not defined for currency " + buyInfo.CurrencyName);
+                return StatusCode(500);
+            }
 
             try
             {
@@ -67,9 +84,9 @@ namespace MoneyApp.API.Controllers
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                _logger.LogError("Error while calling Quote service");
+                _logger.LogError("Error while calling Quote service" + ex.ToString());
                 return StatusCode(500);
             }
 
@@ -79,9 +96,9 @@ namespace MoneyApp.API.Controllers
                 resp.BuyPrice = Convert.ToDecimal(quote[0], new CultureInfo("en-US"));
                 resp.SalePrice = Convert.ToDecimal(quote[1], new CultureInfo("en-US"));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                _logger.LogError("Error while making calculations");
+                _logger.LogError("Error while making calculations" + ex.ToString());
                 return StatusCode(500);
             }
 
@@ -93,13 +110,12 @@ namespace MoneyApp.API.Controllers
 
             decimal totalAmountByUser;
             resp.TimeInfo = quote[2];
-            using (var context = new DataContext())
-            {
-                 totalAmountByUser = (decimal)context.Transactions.Where(t => t.UserId == buyInfo.UserId).
+            
+            totalAmountByUser = (decimal)_context.Transactions.Where(t => t.UserId == buyInfo.UserId).
                                                               Where(c => c.CurrencyName == buyInfo.CurrencyName).
                                                               Where(date => date.TransactionDate > DateTime.Today.AddDays((DateTime.Today.Day - 1) * -1)).
                                                               Select(t => t.Amount).Sum();
-            }
+           
 
             if (resp.SalePrice == 0)
             {
@@ -115,25 +131,22 @@ namespace MoneyApp.API.Controllers
                 return BadRequest("Cannot process transaction because is over established monthly limit for userid");
             }
 
-           
-            using (var context = new DataContext())
-            {
-                var transaction = new Transaction();
-                transaction.UserId = buyInfo.UserId;
-                transaction.CurrencyName = buyInfo.CurrencyName;
-                transaction.Amount = buyInfo.QuantityToInvest / resp.SalePrice;
-                transaction.TransactionDate = DateTime.Now;
-                context.Transactions.Add(transaction);
-                if((await context.SaveChangesAsync()) > 0)
-                {
-                    return Ok(transaction);
-                }
-                else
-                {
-                    _logger.LogError("Error while trying to save changes");
-                    return StatusCode(500);
-                }
+                      
+            var transaction = new Transaction();
+            transaction.UserId = buyInfo.UserId;
+            transaction.CurrencyName = buyInfo.CurrencyName;
+            transaction.Amount = buyInfo.QuantityToInvest / resp.SalePrice;
+            transaction.TransactionDate = DateTime.Now;
+            _context.Transactions.Add(transaction);
 
+            if((await _context.SaveChangesAsync()) > 0)
+            {
+                return Ok(transaction);
+            }
+            else
+            {
+                _logger.LogError("Error while trying to save changes");
+                return StatusCode(500);
             }
            
         }
