@@ -1,0 +1,16 @@
+﻿CREATE DATABASE BDPRUEBA
+GO
+
+USE BDPRUEBA
+GO
+
+CREATE TABLE transactions (
+    ID INT PRIMARY KEY IDENTITY (1, 1),
+    userID VARCHAR (50) NOT NULL,
+    Amount DECIMAL(6,3),
+    CurrencyName VARCHAR (50) NOT NULL,
+    TransactionDate DATETIME
+);
+GO
+
+
