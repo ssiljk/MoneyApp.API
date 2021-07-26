@@ -30,6 +30,7 @@ namespace MoneyApp.API
         {
 
             services.AddControllers();
+            services.AddCors();
             services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "MoneyApp.API", Version = "v1" });
@@ -48,7 +49,9 @@ namespace MoneyApp.API
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "MoneyApp.API v1"));
             }
 
-            app.UseHttpsRedirection();
+            app.UseCors(x => x.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+
+            //app.UseHttpsRedirection();
 
             app.UseRouting();
 
